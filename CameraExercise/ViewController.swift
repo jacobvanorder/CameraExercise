@@ -28,6 +28,9 @@ class MainCameraViewController: UIViewController {
             return false
             })
         let captureDevice = possibleDevices.filteredArrayUsingPredicate(frontCameraPredicate)[0] as AVCaptureDevice
+        if captureDevice.lockForConfiguration(nil) {
+            captureDevice.focusMode = .Locked
+        }
         return captureDevice
     }()
     
@@ -46,7 +49,32 @@ class MainCameraViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         self.setupCamera()
+        let rightPanGestureRecognizer = UISwipeGestureRecognizer(target: self, action: "swipeGestureDidSwipe:")
+        rightPanGestureRecognizer.direction = .Right
+        self.view.addGestureRecognizer(rightPanGestureRecognizer)
+        let leftPanGestureRecognizer = UISwipeGestureRecognizer(target: self, action: "swipeGestureDidSwipe:")
+        leftPanGestureRecognizer.direction = .Left
+        self.view.addGestureRecognizer(leftPanGestureRecognizer)
         // Do any additional setup after loading the view, typically from a nib.
+    }
+    
+    func swipeGestureDidSwipe(swipeGesture: UISwipeGestureRecognizer) {
+        if swipeGesture.state == .Ended {
+            var focusAmount = self.captureDevice.lensPosition
+            if swipeGesture.direction == .Right {
+                if focusAmount < 0.89 {
+                focusAmount += 0.1
+                }
+            }
+            else {
+                if focusAmount > 0.09 {
+                focusAmount -= 0.1
+                }
+            }
+            if self.captureDevice.lockForConfiguration(nil) {
+                self.captureDevice.setFocusModeLockedWithLensPosition(focusAmount, completionHandler: nil)
+            }
+        }
     }
     
     override func viewWillAppear(animated: Bool) {
@@ -59,6 +87,12 @@ class MainCameraViewController: UIViewController {
         session.stopRunning()
     }
     
+    override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator coordinator: UIViewControllerTransitionCoordinator!) {
+        coordinator.animateAlongsideTransition(nil, completion: {(context :UIViewControllerTransitionCoordinatorContext!) in
+            self.setPreviewLayerOrientation()
+            })
+    }
+    
     func setupCamera() {
         
         previewView.session = session
@@ -66,11 +100,7 @@ class MainCameraViewController: UIViewController {
         
         if session.canAddInput(videoDeviceInput) {
             session.addInput(videoDeviceInput)
-            dispatch_async(dispatch_get_main_queue(), {
-                let previewViewLayer = self.previewView.layer as AVCaptureVideoPreviewLayer
-                let orientation = AVCaptureVideoOrientation.fromRaw(self.interfaceOrientation.toRaw()) //can't force type to AVCaptureVideoDeviceOrientation…
-                previewViewLayer.connection.videoOrientation = orientation!
-                })
+            self.setPreviewLayerOrientation()
         }
         
         if session.canAddOutput(stillImageOutput) {
@@ -78,6 +108,14 @@ class MainCameraViewController: UIViewController {
         }
         
         session.commitConfiguration()
+    }
+    
+    func setPreviewLayerOrientation () {
+        dispatch_async(dispatch_get_main_queue(), {
+            let previewViewLayer = self.previewView.layer as AVCaptureVideoPreviewLayer
+            let orientation = AVCaptureVideoOrientation.fromRaw(self.interfaceOrientation.toRaw()) //can't force type to AVCaptureVideoDeviceOrientation…
+            previewViewLayer.connection.videoOrientation = orientation!
+            })
     }
 
 //    override func didReceiveMemoryWarning() {
